@@ -20,9 +20,15 @@ jobs:
       - run: npm install
       - name: Build bundle
         run: node build.mjs
+      - name: Build main-process bundle
+        run: node build-main.mjs
+      - name: Build runner bundle
+        run: node build-runner.mjs
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/voiden-advanced-auth.js
+            dist/voiden-advanced-auth-main.js
+            dist/voiden-advanced-auth-runner.js
             manifest.json
