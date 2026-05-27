@@ -1,6 +1,6 @@
 {
   "name": "@voiden/plugin-voiden-advanced-auth",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "private": false,
   "description": "Advanced authentication support for HTTP/REST APIs including Bearer Token, Basic Auth, API Key, OAuth 1.0/2.0, Digest, AWS Signature, and more",
