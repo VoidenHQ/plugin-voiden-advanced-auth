@@ -1,0 +1,42 @@
+[
+  {
+    "version": "v2.0.4",
+    "date": "29/05/2026",
+    "title": "Build Fix",
+    "changes": {
+      "Fixed": [
+        "Remove catch-all shim from build pipeline for correct dependency bundling"
+      ]
+    }
+  },
+  {
+    "version": "v2.0.2",
+    "date": "27/05/2026",
+    "title": "OAuth2 Error Toasts & Shim Fix",
+    "changes": {
+      "Fixed": [
+        "OAuth2 auto-acquire and auto-refresh now show toast with specific error when config fields are missing or token server returns error",
+        "Removed catch-all shim block"
+      ]
+    }
+  },
+  {
+    "version": "v2.0.0",
+    "date": "10/05/2026",
+    "title": "SDK v2 Migration",
+    "description": "Rewritten on the new SDK pipeline architecture with improved OAuth2 support.",
+    "changes": {
+      "Added": [
+        "OAuth2 Client Credentials, Authorization Code, and Password flows",
+        "Automatic token refresh before expiry",
+        "AWS Signature v4 authentication",
+        "Digest authentication",
+        "NTLM authentication support"
+      ],
+      "Improved": [
+        "Bearer token block redesigned with token preview",
+        "Basic auth now encodes correctly for all character sets"
+      ]
+    }
+  }
+]
