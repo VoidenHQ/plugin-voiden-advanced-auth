@@ -29,6 +29,7 @@ jobs:
         with:
           files: |
             dist/voiden-advanced-auth.js
+            dist/changelog.json
             dist/voiden-advanced-auth-main.cjs
             dist/voiden-advanced-auth-runner.js
             src/skill.md
