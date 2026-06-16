@@ -41,6 +41,26 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
       // Register AuthNode
       context.registerVoidenExtension(AuthNode);
 
+      (context as any).registerBlockOutlineMeta({
+        auth: {
+          label: "Auth",
+          icon: "Shield",
+          getPreview: (attrs: Record<string, any>) => {
+            const labels: Record<string, string> = {
+              bearer: "Bearer Token",
+              basic: "Basic Auth",
+              "api-key": "API Key",
+              oauth2: "OAuth 2.0",
+              oauth1: "OAuth 1.0",
+              digest: "Digest Auth",
+              aws: "AWS Signature",
+              inherit: "Inherited",
+            };
+            return attrs?.authType ? (labels[attrs.authType] ?? attrs.authType) : undefined;
+          },
+        },
+      });
+
       // ── OAuth2 Auto-Refresh Hook ──────────────────────────────────
       // Runs during RequestCompilation (before preSendProcessHook).
       // If autoRefresh is enabled and the token is expired, refreshes
