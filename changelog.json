@@ -14,6 +14,9 @@
     "date": "27/05/2026",
     "title": "OAuth2 Error Toasts & Shim Fix",
     "changes": {
+      "Added": [
+        "Block outline metadata for the auth block so it displays at its correct document position in the Block Overview Panel, with the auth type (Bearer Token, OAuth 2.0, etc.) shown as the preview"
+      ],
       "Fixed": [
         "OAuth2 auto-acquire and auto-refresh now show toast with specific error when config fields are missing or token server returns error",
         "Removed catch-all shim block"
