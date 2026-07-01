@@ -1,9 +1,12 @@
 [
   {
     "version": "v2.0.4",
-    "date": "29/05/2026",
-    "title": "Build Fix",
+    "date": "01/07/2026",
+    "title": "cURL Header Extender & Build Fix",
     "changes": {
+      "Added": [
+        "Plugin API for extending cURL output — plugins can register a `registerCurlHeaderExtender` function to inject headers, query params, or raw cURL flags into the cURL command produced by CopyCurlButton"
+      ],
       "Fixed": [
         "Remove catch-all shim from build pipeline for correct dependency bundling"
       ]

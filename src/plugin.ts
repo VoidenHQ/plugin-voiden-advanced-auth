@@ -335,6 +335,81 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
         console.warn('[voiden-advanced-auth] Failed to register 401 hook:', err);
       }
 
+      // ── cURL Extender ─────────────────────────────────────────────
+      // Fills in auth for types that generateCurlFromRequestObject doesn't
+      // handle natively. bearer-token / basic-auth / api-key are already
+      // converted by the base generator via req.auth, so this only covers
+      // the remaining types. Values with {{process.*}} placeholders are
+      // resolved by CopyCurlButton's env.replaceVariables after generation.
+      try {
+        (context.paste as any).registerCurlHeaderExtender(async (doc: any) => {
+          try {
+            // @ts-ignore - resolved at runtime in app context
+            const { parseAuthNode } = await import(/* @vite-ignore */ '@/core/request-engine/getRequestFromJson');
+            const auth = parseAuthNode(doc);
+            if (!auth?.enabled || !auth.type) return {};
+
+            const cfg = auth.config ?? {};
+            const type = auth.type;
+
+            // ── OAuth 2.0 ──────────────────────────────────────────
+            if (type === 'oauth2') {
+              const varPrefix = cfg.variablePrefix || 'oauth2';
+              const prefix = cfg.headerPrefix || 'Bearer';
+              if (cfg.addTokenTo === 'query') {
+                return { queryParams: [{ key: 'access_token', value: `{{process.${varPrefix}_access_token}}` }] };
+              }
+              return { headers: [{ key: 'Authorization', value: `${prefix} {{process.${varPrefix}_access_token}}` }] };
+            }
+
+            // ── Digest Auth ────────────────────────────────────────
+            if (type === 'digest-auth') {
+              const user = cfg.username || '';
+              const pass = cfg.password || '';
+              return { flags: ['--digest', `-u "${user}:${pass}"`] };
+            }
+
+            // ── NTLM ──────────────────────────────────────────────
+            if (type === 'ntlm') {
+              const user = cfg.username || '';
+              const pass = cfg.password || '';
+              const userStr = cfg.domain ? `${cfg.domain}\\${user}` : user;
+              return { flags: ['--ntlm', `-u "${userStr}:${pass}"`] };
+            }
+
+            // ── AWS Signature ──────────────────────────────────────
+            if (type === 'aws-signature') {
+              const region = cfg.region || 'us-east-1';
+              const service = cfg.service || 'execute-api';
+              const accessKey = cfg.accessKey || '';
+              const secretKey = cfg.secretKey || '';
+              return {
+                flags: [
+                  `--aws-sigv4 "aws:amz:${region}:${service}"`,
+                  `-u "${accessKey}:${secretKey}"`,
+                ],
+              };
+            }
+
+            // ── Netrc ──────────────────────────────────────────────
+            if (type === 'netrc') {
+              return { flags: ['--netrc'] };
+            }
+
+            // ── OAuth 1.0 / Hawk / Atlassian ASAP ─────────────────
+            // These require a runtime-computed HMAC/JWT signature over the
+            // exact request data — there is no static cURL representation.
+
+            // bearer-token, basic-auth, api-key: handled by generateCurlFromRequestObject
+            return {};
+          } catch {
+            return {};
+          }
+        });
+      } catch (err) {
+        console.warn('[voiden-advanced-auth] Failed to register cURL extender:', err);
+      }
+
       // Register linkable node type
       context.registerLinkableNodeTypes(['auth']);
 
