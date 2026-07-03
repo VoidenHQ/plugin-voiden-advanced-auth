@@ -76,18 +76,94 @@ content:
 
 #### oauth2 — OAuth 2.0
 
+OAuth2 rows depend on the grant type. The `oauth2Config` attribute (JSON string) stores the full OAuth2 configuration.
+
+**authorization_code** — most common, requires redirect/callback:
+
 ```yaml
 attrs:
   authType: oauth2
+  oauth2Config: '{"grantType":"authorization_code","authUrl":"","tokenUrl":"","clientId":"","clientSecret":"","scope":"","callbackUrl":"","addTokenTo":"header","headerPrefix":"Bearer","autoRefresh":false,"clientAuthMethod":"basic"}'
 content:
   - type: table
     rows:
       - attrs: { disabled: false }
-        row: [access_token, "{{OAUTH_TOKEN}}"]
+        row: [auth_url, "{{OAUTH_AUTH_URL}}"]
       - attrs: { disabled: false }
-        row: [token_type, Bearer]
+        row: [token_url, "{{OAUTH_TOKEN_URL}}"]
       - attrs: { disabled: false }
-        row: [header_prefix, Bearer]
+        row: [client_id, "{{OAUTH_CLIENT_ID}}"]
+      - attrs: { disabled: false }
+        row: [client_secret, "{{OAUTH_CLIENT_SECRET}}"]
+      - attrs: { disabled: false }
+        row: [scope, "read write"]
+      - attrs: { disabled: false }
+        row: [callback_url, "{{OAUTH_CALLBACK_URL}}"]
+      - attrs: { disabled: false }
+        row: [state, "{{OAUTH_STATE}}"]
+```
+
+**implicit** — no client secret, token returned directly from auth endpoint:
+
+```yaml
+attrs:
+  authType: oauth2
+  oauth2Config: '{"grantType":"implicit","authUrl":"","clientId":"","scope":"","callbackUrl":"","addTokenTo":"header","headerPrefix":"Bearer"}'
+content:
+  - type: table
+    rows:
+      - attrs: { disabled: false }
+        row: [auth_url, "{{OAUTH_AUTH_URL}}"]
+      - attrs: { disabled: false }
+        row: [client_id, "{{OAUTH_CLIENT_ID}}"]
+      - attrs: { disabled: false }
+        row: [scope, "read"]
+      - attrs: { disabled: false }
+        row: [callback_url, "{{OAUTH_CALLBACK_URL}}"]
+      - attrs: { disabled: false }
+        row: [state, "{{OAUTH_STATE}}"]
+```
+
+**password** — resource owner password credentials:
+
+```yaml
+attrs:
+  authType: oauth2
+  oauth2Config: '{"grantType":"password","tokenUrl":"","clientId":"","clientSecret":"","scope":"","addTokenTo":"header","headerPrefix":"Bearer"}'
+content:
+  - type: table
+    rows:
+      - attrs: { disabled: false }
+        row: [token_url, "{{OAUTH_TOKEN_URL}}"]
+      - attrs: { disabled: false }
+        row: [client_id, "{{OAUTH_CLIENT_ID}}"]
+      - attrs: { disabled: false }
+        row: [client_secret, "{{OAUTH_CLIENT_SECRET}}"]
+      - attrs: { disabled: false }
+        row: [username, "{{OAUTH_USERNAME}}"]
+      - attrs: { disabled: false }
+        row: [password, "{{OAUTH_PASSWORD}}"]
+      - attrs: { disabled: false }
+        row: [scope, "read write"]
+```
+
+**client_credentials** — machine-to-machine, no user context:
+
+```yaml
+attrs:
+  authType: oauth2
+  oauth2Config: '{"grantType":"client_credentials","tokenUrl":"","clientId":"","clientSecret":"","scope":"","addTokenTo":"header","headerPrefix":"Bearer"}'
+content:
+  - type: table
+    rows:
+      - attrs: { disabled: false }
+        row: [token_url, "{{OAUTH_TOKEN_URL}}"]
+      - attrs: { disabled: false }
+        row: [client_id, "{{OAUTH_CLIENT_ID}}"]
+      - attrs: { disabled: false }
+        row: [client_secret, "{{OAUTH_CLIENT_SECRET}}"]
+      - attrs: { disabled: false }
+        row: [scope, "api"]
 ```
 
 #### oauth1 — OAuth 1.0a
@@ -194,6 +270,26 @@ content:
         row: [password, "{{PASSWORD}}"]
 ```
 
+#### atlassianAsap — Atlassian ASAP
+
+```yaml
+attrs:
+  authType: atlassianAsap
+content:
+  - type: table
+    rows:
+      - attrs: { disabled: false }
+        row: [issuer, "{{ASAP_ISSUER}}"]
+      - attrs: { disabled: false }
+        row: [subject, "{{ASAP_SUBJECT}}"]
+      - attrs: { disabled: false }
+        row: [audience, "{{ASAP_AUDIENCE}}"]
+      - attrs: { disabled: false }
+        row: [key_id, "{{ASAP_KEY_ID}}"]
+      - attrs: { disabled: false }
+        row: [private_key, "{{ASAP_PRIVATE_KEY}}"]
+```
+
 ### Auth Field Reference
 
 | `authType` | Required rows | Optional rows |
@@ -202,12 +298,16 @@ content:
 | `bearer` | `token` | — |
 | `basic` | `username`, `password` | — |
 | `apiKey` | `key`, `value`, `add_to` | — |
-| `oauth2` | `access_token` | `token_type`, `header_prefix` |
+| `oauth2` (authorization_code) | `auth_url`, `token_url`, `client_id`, `client_secret`, `scope`, `callback_url` | `state` |
+| `oauth2` (implicit) | `auth_url`, `client_id`, `scope`, `callback_url` | `state` |
+| `oauth2` (password) | `token_url`, `client_id`, `client_secret`, `username`, `password` | `scope` |
+| `oauth2` (client_credentials) | `token_url`, `client_id`, `client_secret` | `scope` |
 | `oauth1` | `consumer_key`, `consumer_secret`, `access_token`, `token_secret` | `signature_method` |
 | `digest` | `username`, `password` | — |
 | `awsSignature` | `access_key`, `secret_key`, `region`, `service` | `session_token` |
 | `ntlm` | `username`, `password` | `domain`, `workstation` |
 | `hawk` | `id`, `key` | `algorithm` |
 | `netrc` | `machine`, `login`, `password` | — |
+| `atlassianAsap` | `issuer`, `subject`, `audience`, `key_id`, `private_key` | — |
 
 **Always use `{{VARIABLE_NAME}}` for credentials — never hardcode secrets in `.void` files.**
