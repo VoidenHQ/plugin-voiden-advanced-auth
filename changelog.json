@@ -1,5 +1,15 @@
 [
   {
+    "version": "v2.0.5",
+    "date": "03/07/2026",
+    "title": "Skill Documentation Expansion",
+    "changes": {
+      "Improved": [
+        "AI skill documentation significantly expanded with full OAuth2 configuration reference (all grant types, PKCE, token fields), complete auth block attr schemas, and Atlassian ASAP auth method documentation"
+      ]
+    }
+  },
+  {
     "version": "v2.0.4",
     "date": "01/07/2026",
     "title": "cURL Header Extender & Build Fix",
