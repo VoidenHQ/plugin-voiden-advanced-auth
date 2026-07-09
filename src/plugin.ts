@@ -337,10 +337,20 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
 
       // ── cURL Extender ─────────────────────────────────────────────
       // Fills in auth for types that generateCurlFromRequestObject doesn't
-      // handle natively. bearer-token / basic-auth / api-key are already
-      // converted by the base generator via req.auth, so this only covers
-      // the remaining types. Values with {{process.*}} placeholders are
-      // resolved by CopyCurlButton's env.replaceVariables after generation.
+      // handle natively (oauth2, digest, ntlm, aws-signature, netrc, and a
+      // best-effort PLAINTEXT oauth1). bearer-token / basic-auth / api-key
+      // are already converted by the base generator via req.auth, so this
+      // only covers the remaining types. Every type below embeds its actual
+      // resolved value (not a {{placeholder}}) — a copied cURL command is
+      // meant to be runnable as-is outside Voiden, where {{...}} syntax has
+      // no meaning.
+      //
+      // Registration goes through context.paste (a real function reference
+      // handed to this plugin at load time, reliable). Callers read this
+      // extender back the same way — via context.paste.getCurlHeaderExtenders()
+      // — rather than a plugin dynamically importing another plugin's
+      // app-internal module path at runtime, which has no guaranteed
+      // resolution and was silently dropping every type registered here.
       try {
         (context.paste as any).registerCurlHeaderExtender(async (doc: any) => {
           try {
@@ -353,13 +363,23 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
             const type = auth.type;
 
             // ── OAuth 2.0 ──────────────────────────────────────────
+            // Embed the actual stored access token rather than a
+            // {{process.xxx}} placeholder — the token is only ever fetched
+            // by the auto-acquire/refresh hook when a request is actually
+            // sent, so a placeholder left unresolved (no token acquired
+            // yet) would silently produce a useless "Bearer {{...}}"
+            // header in a command meant to run outside Voiden.
             if (type === 'oauth2') {
               const varPrefix = cfg.variablePrefix || 'oauth2';
               const prefix = cfg.headerPrefix || 'Bearer';
-              if (cfg.addTokenTo === 'query') {
-                return { queryParams: [{ key: 'access_token', value: `{{process.${varPrefix}_access_token}}` }] };
+              const token = await (window as any).electron?.variables?.get(`${varPrefix}_access_token`);
+              if (!token) {
+                return { warning: 'OAuth2: No access token found — send the request once to acquire a token, then copy the cURL command.' };
               }
-              return { headers: [{ key: 'Authorization', value: `${prefix} {{process.${varPrefix}_access_token}}` }] };
+              if (cfg.addTokenTo === 'query') {
+                return { queryParams: [{ key: 'access_token', value: token }] };
+              }
+              return { headers: [{ key: 'Authorization', value: `${prefix} ${token}` }] };
             }
 
             // ── Digest Auth ────────────────────────────────────────
@@ -392,17 +412,67 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
             }
 
             // ── Netrc ──────────────────────────────────────────────
+            // A bare --netrc flag tells curl to read credentials from the
+            // system's ~/.netrc file — it doesn't embed this block's own
+            // machine/login/password anywhere, so the copied command only
+            // authenticates if the machine running it happens to already
+            // have a matching ~/.netrc entry. curl's netrc support feeds
+            // into the same HTTP Basic Auth mechanism under the hood, so
+            // emit -u directly instead — immediately runnable, no external
+            // file dependency. (machine is only used to select the right
+            // ~/.netrc entry in the first place; it isn't itself sent to
+            // the server, so it has no place in the actual curl command.)
             if (type === 'netrc') {
-              return { flags: ['--netrc'] };
+              return { flags: [`-u "${cfg.login || ''}:${cfg.password || ''}"`] };
             }
 
-            // ── OAuth 1.0 / Hawk / Atlassian ASAP ─────────────────
-            // These require a runtime-computed HMAC/JWT signature over the
-            // exact request data — there is no static cURL representation.
+            // ── OAuth 1.0 ──────────────────────────────────────────
+            // Only the PLAINTEXT signature method has a static representation
+            // (it's just the secrets concatenated, no request-specific HMAC) —
+            // matches what sendRequestHybrid.ts's live-request path actually
+            // sends today regardless of the configured signatureMethod, so
+            // this stays consistent with real app behavior rather than
+            // producing a curl command that authenticates differently than
+            // what "Send" does. HMAC-SHA1/SHA256 would require signing the
+            // exact method+URL+timestamp+nonce, which isn't representable as
+            // static text — timestamp/nonce here are generated at copy time.
+            if (type === 'oauth1') {
+              const parts: string[] = [];
+              if (cfg.consumerKey) parts.push(`oauth_consumer_key="${cfg.consumerKey}"`);
+              if (cfg.token) parts.push(`oauth_token="${cfg.token}"`);
+              parts.push('oauth_signature_method="PLAINTEXT"');
+              const signature = `${cfg.consumerSecret || ''}&${cfg.tokenSecret || ''}`;
+              parts.push(`oauth_signature="${encodeURIComponent(signature)}"`);
+              parts.push(`oauth_timestamp="${Math.floor(Date.now() / 1000)}"`);
+              parts.push(`oauth_nonce="${Math.random().toString(36).substring(2)}"`);
+              parts.push('oauth_version="1.0"');
+              return { headers: [{ key: 'Authorization', value: `OAuth ${parts.join(', ')}` }] };
+            }
+
+            // ── Hawk ────────────────────────────────────────────────
+            // Requires an HMAC-SHA256/SHA1 MAC computed over method, host,
+            // port, path, a fresh timestamp, and a fresh nonce — deliberately
+            // time-bound (servers reject it once the timestamp is too old,
+            // to prevent replay). No curl flag can express this: unlike
+            // Digest/NTLM/AWS-SigV4, curl has no native Hawk implementation,
+            // and pre-computing a MAC here would only work for the ~60s
+            // after copying before silently failing later. Surface this as
+            // an explicit warning rather than silently omitting the auth.
+            if (type === 'hawk') {
+              return { warning: 'Hawk requires a live-computed signature and isn\'t included in the copied cURL command.' };
+            }
+
+            // ── Atlassian ASAP ──────────────────────────────────────
+            // Requires a signed JWT (RS256, using the configured private
+            // key) — there is no static cURL representation.
+            if (type === 'atlassian-asap') {
+              return { warning: 'Atlassian ASAP requires a signed JWT and isn\'t included in the copied cURL command.' };
+            }
 
             // bearer-token, basic-auth, api-key: handled by generateCurlFromRequestObject
             return {};
-          } catch {
+          } catch (err) {
+            console.warn('[voiden-advanced-auth] cURL extender failed:', err);
             return {};
           }
         });

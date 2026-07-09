@@ -2,8 +2,15 @@
   {
     "version": "v2.0.5",
     "date": "03/07/2026",
-    "title": "Skill Documentation Expansion",
+    "title": "Copy as cURL Auth Fixes & Skill Documentation Expansion",
     "changes": {
+      "Fixed": [
+        "Copy as cURL now includes Digest, NTLM, AWS Signature, Netrc, and OAuth 1.0 (PLAINTEXT) auth — a fragile dynamic import used to reach the cURL header extender registry and was silently dropping every one of these auth types from the generated command with no error surfaced anywhere; registration and lookup now go through a direct context reference instead",
+        "Copy as cURL no longer repeats the same auth flags multiple times in the generated command",
+        "Netrc auth in Copy as cURL now includes the actual login/password via -u instead of a bare --netrc flag, which only works if the machine running the command happens to already have a matching ~/.netrc entry",
+        "OAuth 2.0 auth in Copy as cURL now embeds the actual resolved access token instead of an unresolved {{process.*}} placeholder, which has no meaning outside Voiden",
+        "Copy as cURL now surfaces a warning toast for Hawk and Atlassian ASAP auth, which require a live-computed signature/JWT with no static cURL representation, instead of silently omitting them"
+      ],
       "Improved": [
         "AI skill documentation significantly expanded with full OAuth2 configuration reference (all grant types, PKCE, token fields), complete auth block attr schemas, and Atlassian ASAP auth method documentation"
       ]
