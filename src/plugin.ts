@@ -480,6 +480,155 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
         console.warn('[voiden-advanced-auth] Failed to register cURL extender:', err);
       }
 
+      // ── cURL Auth Parser (paste direction) ─────────────────────────
+      // The reverse of the extender above: voiden-rest-api's curl importer
+      // extracts raw auth signals from a pasted cURL command (it has no
+      // knowledge of auth-block attr schemas) and hands them here to build a
+      // ready-to-insert `auth` node, keeping that schema knowledge in this
+      // plugin the same way the copy-direction extender does.
+      try {
+        const authRow = (key: string, value: string) => ({
+          type: 'tableRow',
+          attrs: { disabled: false },
+          content: [
+            { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: key }] }] },
+            { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: value }] }] },
+          ],
+        });
+        const buildAuthNode = (authType: string, rows: Array<[string, string]>) => ({
+          type: 'auth',
+          attrs: { authType },
+          content: [
+            { type: 'table', content: rows.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => authRow(k, v)) },
+          ],
+        });
+
+        (context.paste as any).registerCurlAuthParser(async (raw: any) => {
+          try {
+            // ── AWS Signature v4 ──────────────────────────────────
+            // --aws-sigv4 "aws:amz:region:service" — region/service are
+            // always the last two colon-separated segments regardless of
+            // how many provider segments precede them.
+            if (raw.awsSigV4) {
+              const parts = String(raw.awsSigV4).split(':');
+              const service = parts.pop() || 'execute-api';
+              const region = parts.pop() || 'us-east-1';
+              return {
+                authNode: buildAuthNode('awsSignature', [
+                  ['access_key', raw.username || ''],
+                  ['secret_key', raw.password || ''],
+                  ['region', region],
+                  ['service', service],
+                ]),
+              };
+            }
+
+            // ── NTLM ──────────────────────────────────────────────
+            if (raw.ntlm) {
+              const hasDomain = (raw.username || '').includes('\\');
+              const [domain, user] = hasDomain ? raw.username.split('\\') : ['', raw.username || ''];
+              return {
+                authNode: buildAuthNode('ntlm', [
+                  ['username', user],
+                  ['password', raw.password || ''],
+                  ['domain', domain],
+                ]),
+              };
+            }
+
+            // ── Digest ────────────────────────────────────────────
+            if (raw.digest) {
+              return {
+                authNode: buildAuthNode('digest', [
+                  ['username', raw.username || ''],
+                  ['password', raw.password || ''],
+                ]),
+              };
+            }
+
+            // ── Netrc ─────────────────────────────────────────────
+            // machine/login/password live in ~/.netrc, never in the pasted
+            // command text itself — nothing to build the block from.
+            if (raw.netrc) {
+              return { warning: 'Netrc auth detected — insert a Netrc auth block manually and fill in machine/login/password from your ~/.netrc file, since curl reads them from that file rather than the command itself.' };
+            }
+
+            // ── Basic (-u with no other flag) ────────────────────
+            if (raw.username) {
+              return {
+                authNode: buildAuthNode('basic', [
+                  ['username', raw.username],
+                  ['password', raw.password || ''],
+                ]),
+              };
+            }
+
+            // ── Authorization header ─────────────────────────────
+            const header = raw.authorizationHeader as string | undefined;
+            if (header) {
+              const bearerMatch = header.match(/^Bearer\s+(.+)$/i);
+              if (bearerMatch) {
+                return { authNode: buildAuthNode('bearer', [['token', bearerMatch[1].trim()]]) };
+              }
+
+              const basicMatch = header.match(/^Basic\s+(.+)$/i);
+              if (basicMatch) {
+                try {
+                  const decoded = atob(basicMatch[1].trim());
+                  const [user, ...rest] = decoded.split(':');
+                  return { authNode: buildAuthNode('basic', [['username', user], ['password', rest.join(':')]]) };
+                } catch {
+                  return {};
+                }
+              }
+
+              const oauthMatch = header.match(/^OAuth\s+(.+)$/i);
+              if (oauthMatch) {
+                const params: Record<string, string> = {};
+                for (const m of oauthMatch[1].matchAll(/(\w+)="([^"]*)"/g)) {
+                  params[m[1]] = m[2];
+                }
+                const rows: Array<[string, string]> = [
+                  ['consumer_key', params.oauth_consumer_key || ''],
+                  ['access_token', params.oauth_token || ''],
+                  ['signature_method', params.oauth_signature_method || 'HMAC-SHA1'],
+                ];
+                // Only the PLAINTEXT method encodes the secrets directly in the
+                // signature (consumerSecret&tokenSecret) — HMAC signatures are
+                // one-way and can't be reversed back into the original secrets.
+                if (params.oauth_signature_method === 'PLAINTEXT' && params.oauth_signature) {
+                  try {
+                    const decoded = decodeURIComponent(params.oauth_signature);
+                    const [consumerSecret, tokenSecret] = decoded.split(/&(.*)$/);
+                    rows.push(['consumer_secret', consumerSecret || ''], ['token_secret', tokenSecret || '']);
+                  } catch { /* leave secrets blank below */ }
+                }
+                const authNode = buildAuthNode('oauth1', rows);
+                return params.oauth_signature_method === 'PLAINTEXT'
+                  ? { authNode }
+                  : { authNode, warning: 'OAuth 1.0: consumer secret and token secret can\'t be recovered from an HMAC signature — re-enter them in the auth block.' };
+              }
+
+              const hawkMatch = header.match(/^Hawk\s+(.+)$/i);
+              if (hawkMatch) {
+                const idMatch = hawkMatch[1].match(/id="([^"]*)"/);
+                return {
+                  authNode: buildAuthNode('hawk', [['id', idMatch?.[1] || '']]),
+                  warning: 'Hawk: the signing key can\'t be recovered from a MAC — re-enter it in the auth block.',
+                };
+              }
+            }
+
+            return {};
+          } catch (err) {
+            console.warn('[voiden-advanced-auth] cURL auth parser failed:', err);
+            return {};
+          }
+        });
+      } catch (err) {
+        console.warn('[voiden-advanced-auth] Failed to register cURL auth parser:', err);
+      }
+
       // Register linkable node type
       context.registerLinkableNodeTypes(['auth']);
 

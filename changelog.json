@@ -2,8 +2,11 @@
   {
     "version": "v2.0.5",
     "date": "03/07/2026",
-    "title": "Copy as cURL Auth Fixes & Skill Documentation Expansion",
+    "title": "Copy/Paste as cURL Auth Fixes & Skill Documentation Expansion",
     "changes": {
+      "Added": [
+        "Pasting a cURL command now builds the matching auth block: Basic, Digest, NTLM, AWS Signature, and Bearer are fully reconstructed; OAuth 1.0 is fully reconstructed when signed PLAINTEXT (consumer/token secrets are recoverable from the signature) or partially reconstructed with a warning for HMAC-signed requests (secrets aren't recoverable from a one-way signature); Hawk recovers the id with a warning that the key must be re-entered; Netrc shows a warning instead of a block, since machine/login/password live in ~/.netrc rather than the pasted command"
+      ],
       "Fixed": [
         "Copy as cURL now includes Digest, NTLM, AWS Signature, Netrc, and OAuth 1.0 (PLAINTEXT) auth — a fragile dynamic import used to reach the cURL header extender registry and was silently dropping every one of these auth types from the generated command with no error surfaced anywhere; registration and lookup now go through a direct context reference instead",
         "Copy as cURL no longer repeats the same auth flags multiple times in the generated command",
