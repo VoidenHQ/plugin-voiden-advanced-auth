@@ -47,6 +47,67 @@ const clientAuthOptions = [
 const EXT_IPC = 'ext:voiden-advanced-auth:';
 const ipc = (ch: string, ...args: any[]) => (window as any).electron?.ipc?.invoke(`${EXT_IPC}${ch}`, ...args);
 
+const AuthTableContent = ({ isEditable, contentVersion }: { isEditable: boolean; contentVersion: number }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [hasHiddenValues, setHasHiddenValues] = useState(false);
+
+  const updateScrollHint = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const remainingScroll = container.scrollWidth - container.clientWidth - container.scrollLeft;
+    setHasHiddenValues(remainingScroll > 1);
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    updateScrollHint();
+    container.addEventListener("scroll", updateScrollHint, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateScrollHint);
+    resizeObserver.observe(container);
+    const table = container.querySelector("table");
+    if (table) resizeObserver.observe(table);
+
+    return () => {
+      container.removeEventListener("scroll", updateScrollHint);
+      resizeObserver.disconnect();
+    };
+  }, [contentVersion, updateScrollHint]);
+
+  return (
+    <div className="relative w-full max-w-full">
+      <div
+        ref={scrollContainerRef}
+        className="w-full max-w-full overflow-x-auto"
+        contentEditable={isEditable}
+        suppressContentEditableWarning
+        role="region"
+        aria-label={hasHiddenValues ? "Authentication fields; scroll horizontally to view values" : "Authentication fields"}
+        tabIndex={hasHiddenValues ? 0 : -1}
+      >
+        <NodeViewContent />
+      </div>
+      {hasHiddenValues && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute right-0 top-0 flex h-full items-center justify-end pr-2"
+          style={{
+            width: "8rem",
+            background: "linear-gradient(to right, transparent, var(--editor-bg) 55%)",
+          }}
+        >
+          <span className="rounded border border-border bg-bg px-1.5 py-0.5 text-xs font-mono text-comment shadow-sm">
+            Scroll for values →
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Factory function to create AuthNode with context components
 export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, openFile?: (relativePath: string) => Promise<void>, showToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void) => {
   const AuthTypeSelector = ({ authType, isEditable, onChange }: { authType: AuthType; isEditable: boolean; onChange: (authType: AuthType) => void }) => {
@@ -509,14 +570,7 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
             <div className="border-t border-border" />
 
             {/* TipTap table with grant-specific fields */}
-            <div
-              className="w-full max-w-full"
-              contentEditable={isEditable}
-              suppressContentEditableWarning
-              style={{ pointerEvents: !isEditable ? "none" : "unset" }}
-            >
-              <NodeViewContent />
-            </div>
+            <AuthTableContent isEditable={isEditable} contentVersion={node.nodeSize} />
 
             {/* Separator */}
             <div className="border-t border-border" />
@@ -622,18 +676,7 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
       }
 
       // For all other types, render the table
-      return (
-        <div
-          className="w-full max-w-full"
-          contentEditable={isEditable}
-          suppressContentEditableWarning
-          style={{
-            pointerEvents: !isEditable ? "none" : "unset",
-          }}
-        >
-          <NodeViewContent />
-        </div>
-      );
+      return <AuthTableContent isEditable={isEditable} contentVersion={node.nodeSize} />;
     };
 
     return (
