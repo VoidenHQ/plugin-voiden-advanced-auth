@@ -41,10 +41,13 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
       // Register AuthNode
       context.registerVoidenExtension(AuthNode);
 
+      // docsUrl defaults to the voiden-blocks root for now — swap in a per-authType deep link later
+      // (e.g. via a docsUrl(attrs) function keyed off attrs.authType) once auth-specific pages exist.
       (context as any).registerBlockOutlineMeta({
         auth: {
           label: "Auth",
           icon: "Shield",
+          docsUrl: "https://docs.voiden.md/docs/core-features-section/voiden-blocks/advanced-authorization/basic-auth-block",
           getPreview: (attrs: Record<string, any>) => {
             const labels: Record<string, string> = {
               bearer: "Bearer Token",
