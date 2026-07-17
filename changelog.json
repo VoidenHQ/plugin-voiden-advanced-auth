@@ -1,11 +1,14 @@
 [
   {
     "version": "v2.0.6",
-    "date": "16/07/2026",
-    "title": "Block Documentation Link",
+    "date": "17/07/2026",
+    "title": "Block Documentation Link & Auth Table Cell Borders",
     "changes": {
       "Added": [
         "An \"Open Documentation\" item now appears in the Auth block's right-click block menu, opening the Voiden Blocks docs in your system browser"
+      ],
+      "Fixed": [
+        "Auth block now shows the same bordered card and cell grid as other request tables (Headers, Query Params, etc.) — every auth type's fields (Basic, Bearer, API Key, OAuth 2.0, and the rest) were previously borderless, making cells hard to tell apart, especially in low-contrast themes"
       ]
     }
   },

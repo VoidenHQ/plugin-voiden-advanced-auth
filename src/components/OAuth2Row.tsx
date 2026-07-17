@@ -5,8 +5,17 @@
  */
 import React, { useRef } from "react";
 
+// border-b gives each row the same divider a real table row gets from
+// .ProseMirror td — these rows are plain flex divs, not <td> elements, so
+// they never picked that up on their own.
+// (Not using a `last:` variant here to strip the final row's border: that
+// compound class isn't used verbatim anywhere in apps/ui/src, and the host
+// app's Tailwind build only scans apps/ui/src — never plugin source — so any
+// class string that isn't already compiled there is silently inert. The
+// resulting 2px line where the last row meets the card's own border is a
+// negligible cosmetic overlap, not a missing border.)
 const rowClass =
-  "flex hover:bg-muted/50 transition-colors";
+  "flex hover:bg-muted/50 transition-colors border-b border-border";
 
 const keyCellClass =
   "p-1 px-2 h-6 flex items-center text-sm font-mono text-comment whitespace-nowrap border-r border-border shrink-0";

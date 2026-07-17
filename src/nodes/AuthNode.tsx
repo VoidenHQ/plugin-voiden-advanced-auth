@@ -47,6 +47,20 @@ const clientAuthOptions = [
 const EXT_IPC = 'ext:voiden-advanced-auth:';
 const ipc = (ch: string, ...args: any[]) => (window as any).electron?.ipc?.invoke(`${EXT_IPC}${ch}`, ...args);
 
+// Plain CSS, not a Tailwind class: the host app's Tailwind build only scans
+// apps/ui/src (see apps/ui/tailwind.config.js content.files), never plugin
+// source. A class string like "[&_td]:border" that isn't already used
+// verbatim somewhere in apps/ui/src never gets compiled into the shared
+// stylesheet, so it silently does nothing no matter how the plugin is built
+// or deployed. A <style> tag has no such dependency.
+const AUTH_TABLE_CELL_BORDER_CLASS = "voiden-auth-table-cell-borders";
+const AUTH_TABLE_CELL_BORDER_CSS = `
+  .${AUTH_TABLE_CELL_BORDER_CLASS} td,
+  .${AUTH_TABLE_CELL_BORDER_CLASS} th {
+    border: 1px solid var(--ui-line) !important;
+  }
+`;
+
 // Factory function to create AuthNode with context components
 export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, openFile?: (relativePath: string) => Promise<void>, showToast?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void) => {
   const AuthTypeSelector = ({ authType, isEditable, onChange }: { authType: AuthType; isEditable: boolean; onChange: (authType: AuthType) => void }) => {
@@ -508,9 +522,20 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
             {/* Separator */}
             <div className="border-t border-border" />
 
-            {/* TipTap table with grant-specific fields */}
+            {/* TipTap table with grant-specific fields. The global .ProseMirror
+                td/th rule only draws a bottom border (and only at 20-40%
+                opacity), so there's no divider between the key/value columns
+                and it reads as "no border" in low-contrast themes. Force a
+                full-opacity border on every side via plain CSS, not a Tailwind
+                class — the host app's Tailwind only scans apps/ui/src, never
+                plugin source, so an arbitrary-variant class like [&_td]:border
+                that isn't already used verbatim somewhere in apps/ui/src never
+                gets compiled and silently does nothing. .ProseMirror table
+                already sets border-collapse: collapse, so adjacent cells merge
+                into a single shared line instead of doubling up. */}
+            <style>{AUTH_TABLE_CELL_BORDER_CSS}</style>
             <div
-              className="w-full max-w-full"
+              className={`w-full max-w-full ${AUTH_TABLE_CELL_BORDER_CLASS}`}
               contentEditable={isEditable}
               suppressContentEditableWarning
               style={{ pointerEvents: !isEditable ? "none" : "unset" }}
@@ -621,16 +646,19 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
         );
       }
 
-      // For all other types, render the table
+      // For all other types (Basic, Bearer, API Key, ...), render the table.
+      // Same forced full-opacity, all-sides td/th border as the OAuth2
+      // grant-fields table above (plain CSS — see AUTH_TABLE_CELL_BORDER_CSS).
       return (
         <div
-          className="w-full max-w-full"
+          className={`w-full max-w-full ${AUTH_TABLE_CELL_BORDER_CLASS}`}
           contentEditable={isEditable}
           suppressContentEditableWarning
           style={{
             pointerEvents: !isEditable ? "none" : "unset",
           }}
         >
+          <style>{AUTH_TABLE_CELL_BORDER_CSS}</style>
           <NodeViewContent />
         </div>
       );
@@ -638,21 +666,26 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
 
     return (
       <NodeViewWrapper spellCheck="false" className="my-2">
-        <RequestBlockHeader
-          withBorder
-          title="HTTP-AUTHORIZATION"
-          editor={editor}
-          importedDocumentId={node.attrs.importedFrom}
-          openFile={openFile}
-          actions={
-            <AuthTypeSelector
-              authType={authType}
-              isEditable={isEditable}
-              onChange={handleAuthTypeChange}
-            />
-          }
-        />
-        {renderContent()}
+        {/* Same bordered/rounded card treatment as the REST API tables
+            (Headers, Query Params, etc. — see Table.tsx) so the auth block
+            reads as one contained block instead of floating unbordered. */}
+        <div className="rounded-md border border-border overflow-hidden">
+          <RequestBlockHeader
+            withBorder
+            title="HTTP-AUTHORIZATION"
+            editor={editor}
+            importedDocumentId={node.attrs.importedFrom}
+            openFile={openFile}
+            actions={
+              <AuthTypeSelector
+                authType={authType}
+                isEditable={isEditable}
+                onChange={handleAuthTypeChange}
+              />
+            }
+          />
+          {renderContent()}
+        </div>
       </NodeViewWrapper>
     );
   };
