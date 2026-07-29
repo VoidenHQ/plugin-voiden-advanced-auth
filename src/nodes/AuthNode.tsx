@@ -676,6 +676,7 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
             editor={editor}
             importedDocumentId={node.attrs.importedFrom}
             openFile={openFile}
+            blockType="auth"
             actions={
               <AuthTypeSelector
                 authType={authType}

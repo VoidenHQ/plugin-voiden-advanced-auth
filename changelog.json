@@ -1,9 +1,12 @@
 [
   {
     "version": "v2.0.7",
-    "date": "28/07/2026",
-    "title": "Headless Auth Now Actually Applies",
+    "date": "29/07/2026",
+    "title": "Headless Auth Now Actually Applies & Inline Block Help",
     "changes": {
+      "Added": [
+        "The Auth block now shows an inline \"?\" help tooltip in its header, matching the other request blocks"
+      ],
       "Fixed": [
         "The Auth block (Bearer, Basic, API Key) is now parsed and actually applied as request headers/query params when running headlessly via the CLI or voiden-mcp — previously nothing in the headless request-build pipeline read the auth block at all, so every CLI/MCP request silently ran with no authentication regardless of what was configured in the Auth tab, while the real Voiden app's Send button (which applies auth in the renderer before the request ever leaves it) was never affected",
         "Merges its auth-derived headers/query params with whatever another plugin's request-build handler already contributed (e.g. voiden-rest-api's headers-table rows) instead of overwriting them, regardless of which plugin's handler runs first"

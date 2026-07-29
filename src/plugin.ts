@@ -15,6 +15,7 @@
 import type { CorePluginContext } from '@voiden/sdk/ui';
 type PluginContext = CorePluginContext;
 import { insertAuthNode } from './lib/utils';
+import { AuthHelp } from './help/index';
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -62,6 +63,11 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
             return attrs?.authType ? (labels[attrs.authType] ?? attrs.authType) : undefined;
           },
         },
+      });
+
+      // Inline block "?" help tooltip (RequestBlockHeader)
+      (context as any).registerBlockHelp?.({
+        auth: AuthHelp,
       });
 
       // ── OAuth2 Auto-Refresh Hook ──────────────────────────────────
