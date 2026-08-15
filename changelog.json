@@ -1,5 +1,24 @@
 [
   {
+    "version": "v2.0.8",
+    "date": "15/08/2026",
+    "title": "AWS Signature v4 Secure Runner Integration",
+    "changes": {
+      "Added": [
+        "Headless CLI/MCP requests now transport AWS Signature v4 auth configuration to the shared secure executor, including optional session tokens for temporary credentials",
+        "AWS auth guidance now documents environment variables, all supported signing services, and the exact CloudWatch (monitoring) and API Gateway invocation (execute-api) signing names"
+      ],
+      "Fixed": [
+        "AWS cURL export uses curl's live --aws-sigv4 signing and preserves temporary credentials with X-Amz-Security-Token instead of exporting a static signature",
+        "AWS cURL imports retain X-Amz-Security-Token on the request; when session_token is absent from auth config, the secure executor adopts the imported header, includes it in the signature, and redacts it from request metadata",
+        "AWS auth blocks now include the optional session_token field and standard credential variable placeholders"
+      ],
+      "Known limitations": [
+        "Signed redirects require manual handling, multipart/form-data signing is unsupported, and S3 dot-only paths are rejected"
+      ]
+    }
+  },
+  {
     "version": "v2.0.7",
     "date": "29/07/2026",
     "title": "Headless Auth Now Actually Applies & Inline Block Help",

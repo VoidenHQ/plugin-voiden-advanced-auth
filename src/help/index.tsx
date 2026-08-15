@@ -21,6 +21,24 @@ export const AuthHelp = () => (
     </section>
 
     <section>
+      <h4 className="font-semibold mb-2 text-text">AWS Signature v4</h4>
+      <p className="text-sm text-comment mb-2">
+        Use <code className="bg-accent/10 px-1 rounded text-text">access_key</code>,{" "}
+        <code className="bg-accent/10 px-1 rounded text-text">secret_key</code>, region, and the AWS signing{" "}
+        <code className="bg-accent/10 px-1 rounded text-text">service</code>. Temporary credentials also require the optional{" "}
+        <code className="bg-accent/10 px-1 rounded text-text">session_token</code>. Prefer the standard environment variables
+        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN.
+      </p>
+      <p className="text-sm text-comment">
+        Signing names: S3 → <code className="text-text">s3</code>; API Gateway invocation →{" "}
+        <code className="text-text">execute-api</code>; Lambda → <code className="text-text">lambda</code>; DynamoDB →{" "}
+        <code className="text-text">dynamodb</code>; IAM → <code className="text-text">iam</code>; CloudWatch →{" "}
+        <code className="text-text">monitoring</code>; SNS → <code className="text-text">sns</code>; SQS →{" "}
+        <code className="text-text">sqs</code>. Signed redirects are manual, multipart bodies are unsupported, and S3 dot-only path segments are rejected.
+      </p>
+    </section>
+
+    <section>
       <h4 className="font-semibold mb-2 text-text">How to Use</h4>
       <ol className="list-decimal list-inside space-y-1 text-sm text-comment">
         <li>Choose the auth type from the dropdown in the block header</li>

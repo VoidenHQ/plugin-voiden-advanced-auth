@@ -215,10 +215,16 @@ content:
       - attrs: { disabled: false }
         row: [region, us-east-1]
       - attrs: { disabled: false }
-        row: [service, execute-api]
+        row: [service, execute-api]                 # AWS signing name
       - attrs: { disabled: false }
-        row: [session_token, "{{AWS_SESSION_TOKEN}}"]   # optional
+        row: [session_token, "{{AWS_SESSION_TOKEN}}"]   # optional; temporary credentials only
 ```
+
+The secure executor resolves these variables and signs the fully materialized request; the plugin runner only transports the descriptor and must not pre-sign or log credentials. Use `{{AWS_ACCESS_KEY_ID}}`, `{{AWS_SECRET_ACCESS_KEY}}`, and, for STS/role credentials, `{{AWS_SESSION_TOKEN}}`.
+
+Supported `service` values are `s3` (Amazon S3), `execute-api` (API Gateway invocation), `apigateway` (API Gateway control plane), `lambda`, `dynamodb`, `iam`, `monitoring` (CloudWatch), `sns`, and `sqs`. Signing names are cryptographic protocol values: use `monitoring`, not `cloudwatch`, and `execute-api`, not `apigateway`, for API invocation.
+
+Limitations: SigV4 requests expose redirects for manual handling, do not support `multipart/form-data`, and reject S3 paths containing dot-only (`.`, `..`, or `%2E`) segments. cURL export uses `--aws-sigv4`, `-u`, and an `X-Amz-Security-Token` header when needed, never a static signature. On import, the temporary-token header remains on the request; if the auth config has no `session_token`, the secure executor adopts that header, includes it in the signature, and redacts it from request metadata.
 
 #### ntlm — NTLM
 

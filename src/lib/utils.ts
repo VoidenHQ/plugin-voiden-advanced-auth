@@ -107,8 +107,9 @@ export const getAuthTableRows = (authType: AuthType): string[][] => {
 
     case "awsSignature":
       return [
-        ["access_key", ""],
-        ["secret_key", ""],
+        ["access_key", "{{AWS_ACCESS_KEY_ID}}"],
+        ["secret_key", "{{AWS_SECRET_ACCESS_KEY}}"],
+        ["session_token", ""],
         ["region", "us-east-1"],
         ["service", "execute-api"]
       ];

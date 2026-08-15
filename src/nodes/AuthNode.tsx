@@ -44,6 +44,18 @@ const clientAuthOptions = [
   { value: "client_secret_basic", label: "Basic Auth Header" },
 ];
 
+const AWS_SIGNING_SERVICES = [
+  ["Amazon S3", "s3"],
+  ["API Gateway invocation", "execute-api"],
+  ["API Gateway control plane", "apigateway"],
+  ["Lambda", "lambda"],
+  ["DynamoDB", "dynamodb"],
+  ["IAM", "iam"],
+  ["CloudWatch", "monitoring"],
+  ["SNS", "sns"],
+  ["SQS", "sqs"],
+] as const;
+
 const EXT_IPC = 'ext:voiden-advanced-auth:';
 const ipc = (ch: string, ...args: any[]) => (window as any).electron?.ipc?.invoke(`${EXT_IPC}${ch}`, ...args);
 
@@ -205,6 +217,21 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
       const filledRows = expectedRows.map(([key, def]) => [key, migratedValues[key] || def]);
       setTimeout(() => rebuildTable(filledRows), 0);
     }, [authType, oauth2Config, node, rebuildTable, getTableValues]);
+
+    // Add the optional temporary-credentials row to AWS blocks created by
+    // older plugin versions without discarding their existing values.
+    const didMigrateAws = useRef(false);
+    useEffect(() => {
+      if (authType !== "awsSignature" || didMigrateAws.current) return;
+      const currentValues = getTableValues();
+      if (Object.prototype.hasOwnProperty.call(currentValues, "session_token")) return;
+      didMigrateAws.current = true;
+      const rows = getAuthTableRows("awsSignature").map(([key, fallback]) => [
+        key,
+        Object.prototype.hasOwnProperty.call(currentValues, key) ? currentValues[key] : fallback,
+      ]);
+      setTimeout(() => rebuildTable(rows), 0);
+    }, [authType, getTableValues, rebuildTable]);
 
     // ── OAuth2 Grant Type Change ──────────────────────────────────────
 
@@ -660,6 +687,24 @@ export const createAuthNode = (NodeViewWrapper: any, RequestBlockHeader: any, op
         >
           <style>{AUTH_TABLE_CELL_BORDER_CSS}</style>
           <NodeViewContent />
+          {authType === "awsSignature" && (
+            <div className="border-t border-border px-3 py-2 text-xs font-mono text-comment space-y-1.5" contentEditable={false}>
+              <p>
+                <span className="text-text">access_key</span> (Access key ID),{" "}
+                <span className="text-text">secret_key</span> (Secret access key), and{" "}
+                <span className="text-text">region</span> are required. Use placeholders such as{" "}
+                <code className="text-text">{"{{AWS_ACCESS_KEY_ID}}"}</code> and{" "}
+                <code className="text-text">{"{{AWS_SECRET_ACCESS_KEY}}"}</code>.
+              </p>
+              <p>
+                <span className="text-text">session_token</span> is optional and is required only for temporary credentials
+                (for example <code className="text-text">{"{{AWS_SESSION_TOKEN}}"}</code>).
+              </p>
+              <p>
+                <span className="text-text">service</span> (AWS signing service): {AWS_SIGNING_SERVICES.map(([label, value]) => `${label} → ${value}`).join("; ")}.
+              </p>
+            </div>
+          )}
         </div>
       );
     };

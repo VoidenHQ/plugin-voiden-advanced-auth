@@ -409,13 +409,17 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
             // ── AWS Signature ──────────────────────────────────────
             if (type === 'aws-signature') {
               const region = cfg.region || 'us-east-1';
-              const service = cfg.service || 'execute-api';
-              const accessKey = cfg.accessKey || '';
-              const secretKey = cfg.secretKey || '';
+              const service = cfg.service || cfg.signingService || 'execute-api';
+              const accessKey = cfg.accessKey || cfg.access_key || '';
+              const secretKey = cfg.secretKey || cfg.secret_key || '';
+              const sessionToken = cfg.sessionToken || cfg.session_token || '';
               return {
+                // curl computes a fresh signature when it runs. Never export a
+                // request-specific Authorization/X-Amz-Date pair from Voiden.
                 flags: [
                   `--aws-sigv4 "aws:amz:${region}:${service}"`,
                   `-u "${accessKey}:${secretKey}"`,
+                  ...(sessionToken ? [`-H "X-Amz-Security-Token: ${sessionToken}"`] : []),
                 ],
               };
             }
@@ -522,10 +526,16 @@ export default function createAdvancedAuthPlugin(context: PluginContext) {
               const parts = String(raw.awsSigV4).split(':');
               const service = parts.pop() || 'execute-api';
               const region = parts.pop() || 'us-east-1';
+              // Preserve an explicitly surfaced token for forward-compatible
+              // importers. Current core also keeps X-Amz-Security-Token as a
+              // request header; the secure executor adopts and signs that header
+              // when the auth config itself has no sessionToken.
+              const sessionToken = raw.sessionToken || raw.awsSessionToken || '';
               return {
                 authNode: buildAuthNode('awsSignature', [
                   ['access_key', raw.username || ''],
                   ['secret_key', raw.password || ''],
+                  ['session_token', sessionToken],
                   ['region', region],
                   ['service', service],
                 ]),

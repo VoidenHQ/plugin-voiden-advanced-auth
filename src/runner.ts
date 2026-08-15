@@ -14,16 +14,29 @@ import type { RunnerFactory, RunnerContext, Block } from '@voiden/sdk/runner'
  * @voiden/executors secureRequest.ts) — every headless request silently ran
  * with auth completely ignored, regardless of authType.
  *
- * Only the deterministic auth types are supported here (bearer, basic, apiKey).
- * oauth2/oauth1/digest/ntlm/awsSignature need token refresh or signature
- * generation the app itself only does via renderer-side runtime-variable and
- * env machinery that has no headless equivalent yet — left unimplemented
- * rather than faked.
+ * Deterministic auth types become header/query rows. AWS SigV4 is different:
+ * this runner only transports the unresolved auth descriptor. The shared secure
+ * executor resolves variables and signs the final request, keeping credentials
+ * out of this plugin's logs and avoiding a signature over pre-resolution bytes.
  *
  * Default export: RunnerFactory — called by voiden-runner's plugin loader.
  */
 
 type Row = { key: string; value: string; enabled: boolean }
+
+type RequestAuth = {
+  enabled: true
+  type: 'aws-signature'
+  config: {
+    accessKey: string
+    secretKey: string
+    sessionToken?: string
+    region: string
+    service: string
+  }
+}
+
+type AuthContribution = { headers: Row[]; queryParams: Row[]; auth?: RequestAuth }
 
 function extractRows(block: any): Row[] {
   const rows: Row[] = []
@@ -48,15 +61,23 @@ function extractRows(block: any): Row[] {
  * of a document's blocks and returns the header/query rows it contributes.
  * Returns empty arrays when there's no local auth block, or it's inherit/none.
  */
-export function buildAuthRows(blocks: Block[]): { headers: Row[]; queryParams: Row[] } {
-  const authBlock: any = blocks.find((b: any) => b.type === 'auth')
+export function buildAuthContribution(blocks: Block[]): AuthContribution {
+  const authBlocks: any[] = blocks.filter((b: any) => b.type === 'auth')
+  const localAuth = authBlocks.find((b: any) => !b.attrs?.importedFrom)
+  const localType = localAuth?.attrs?.authType
+  const useInherited = !localType || localType === 'inherit' || localType === 'none'
+  const authBlock: any = useInherited
+    ? authBlocks.find((b: any) => b.attrs?.importedFrom && !['inherit', 'none'].includes(b.attrs?.authType)) ?? localAuth
+    : localAuth
   const authType: string | undefined = authBlock?.attrs?.authType
   if (!authBlock || !authType || authType === 'inherit' || authType === 'none') {
     return { headers: [], queryParams: [] }
   }
 
   const config: Record<string, string> = {}
-  for (const row of extractRows(authBlock)) config[row.key] = row.value
+  for (const row of extractRows(authBlock)) {
+    if (row.enabled) config[row.key] = row.value
+  }
 
   const headers: Row[] = []
   const queryParams: Row[] = []
@@ -82,10 +103,34 @@ export function buildAuthRows(blocks: Block[]): { headers: Row[]; queryParams: R
       else if (key) headers.push({ key, value, enabled: true })
       break
     }
+    case 'awsSignature': {
+      const sessionToken = config.session_token || config.sessionToken || ''
+      return {
+        headers,
+        queryParams,
+        auth: {
+          enabled: true,
+          type: 'aws-signature',
+          config: {
+            accessKey: config.access_key || config.accessKey || '',
+            secretKey: config.secret_key || config.secretKey || '',
+            ...(sessionToken ? { sessionToken } : {}),
+            region: config.region || 'us-east-1',
+            service: config.service || config.signing_service || config.signingService || 'execute-api',
+          },
+        },
+      }
+    }
     default:
       break
   }
 
+  return { headers, queryParams }
+}
+
+/** Backward-compatible helper retained for callers interested only in rows. */
+export function buildAuthRows(blocks: Block[]): { headers: Row[]; queryParams: Row[] } {
+  const { headers, queryParams } = buildAuthContribution(blocks)
   return { headers, queryParams }
 }
 
@@ -100,16 +145,21 @@ const createAdvancedAuthRunner: RunnerFactory = (context: RunnerContext) => {
       // (rather than replacing them) so voiden-rest-api's headers-table/query-table
       // rows survive regardless of which plugin's handler runs first.
       context.onBuildRequest((request, blocks) => {
-        const { headers, queryParams } = buildAuthRows(blocks as Block[])
-        if (headers.length === 0 && queryParams.length === 0) return request
+        const { headers, queryParams, auth } = buildAuthContribution(blocks as Block[])
+        if (headers.length === 0 && queryParams.length === 0 && !auth) return request
 
         const priorHeaders = Array.isArray((request as any)?.headers) ? (request as any).headers : []
         const priorQueryParams = Array.isArray((request as any)?.queryParams) ? (request as any).queryParams : []
+        // CliRequestState in @voiden/sdk 1.0.10 does not declare `auth` yet, but
+        // the current runner forwards this structurally to RestApiRequestState,
+        // whose secure executor consumes it. Keep the cast at this compatibility
+        // boundary; do not hide credentials in metadata or invent a side channel.
         return {
           ...(request as any),
           headers: [...priorHeaders, ...headers],
           queryParams: [...priorQueryParams, ...queryParams],
-        }
+          ...(auth ? { auth } : {}),
+        } as any
       })
     },
   }
