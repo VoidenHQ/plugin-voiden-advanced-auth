@@ -2,6 +2,8 @@
 
 Provides the `auth` block for all authentication types. Place it inside or alongside a `request` block.
 
+> **Singleton per section — one `auth` block total, no matter the type.** `bearer`, `basic`, `apiKey`, `oauth1`, `oauth2`, `digest`, `awsSignature`, `ntlm`, `hawk`, `netrc`, `atlassianAsap`, and `inherit`/`none` all fill the *same* single `auth` slot in a section. Changing auth type means editing this one block's `authType` and fields in place — never insert a second `auth` block alongside the first.
+
 ### auth — Authentication Block
 
 ```yaml

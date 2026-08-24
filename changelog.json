@@ -1,5 +1,15 @@
 [
   {
+    "version": "v2.0.8",
+    "date": "24/08/2026",
+    "title": "Docs: Skill Now Documents the Single Auth Slot Rule",
+    "changes": {
+      "Fixed": [
+        "The bundled skill.md now documents that all auth types (bearer, basic, apiKey, oauth1, oauth2, digest, awsSignature, ntlm, hawk, netrc, atlassianAsap, inherit/none) share one single auth block per request section. This was previously undocumented, which could lead an AI agent to insert a second auth block instead of editing the existing one when asked to change auth type."
+      ]
+    }
+  },
+  {
     "version": "v2.0.7",
     "date": "29/07/2026",
     "title": "Headless Auth Now Actually Applies & Inline Block Help",
