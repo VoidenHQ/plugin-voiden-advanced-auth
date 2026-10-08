@@ -174,6 +174,87 @@ function normalizeTokenResponse(raw: Record<string, unknown>) {
   };
 }
 
+const PREFLIGHT_TIMEOUT_MS = 5_000;
+
+/** Turn a low-level network failure into a sentence a user can act on. */
+function describeNetworkError(err: any): string {
+  const code = err?.code || err?.cause?.code || "";
+  switch (code) {
+    case "ECONNREFUSED": return "connection refused. Is the server running?";
+    case "ENOTFOUND":
+    case "EAI_AGAIN": return "host not found. Check the address.";
+    case "UND_ERR_CONNECT_TIMEOUT":
+    case "UND_ERR_HEADERS_TIMEOUT":
+    case "UND_ERR_BODY_TIMEOUT":
+    case "ETIMEDOUT": return `no response within ${PREFLIGHT_TIMEOUT_MS / 1000}s.`;
+    case "ECONNRESET": return "the server closed the connection.";
+    default:
+      if (/CERT|SSL|TLS/i.test(code)) return `TLS certificate problem (${code}).`;
+      return err?.cause?.message || err?.message || String(err);
+  }
+}
+
+/**
+ * Check that the authorization URL answers before the browser is opened.
+ *
+ * Without this, a server that is down or that rejects the request leaves the
+ * flow waiting on the callback until it times out, with the actual error only
+ * visible in the browser tab. Throws for the cases a browser could not get
+ * past either: the server cannot be reached, the URL is a 404 or 5xx, or the
+ * server answers with an OAuth error (as JSON, or as a redirect back to the
+ * callback). Any other answer, including a 401/403 some providers give to
+ * non-browser clients, lets the flow continue.
+ */
+async function preflightAuthUrl(authorizeUrl: string, redirectUri: string): Promise<void> {
+  const { request } = await import("undici");
+  const origin = new URL(authorizeUrl).origin;
+
+  let res;
+  try {
+    res = await request(authorizeUrl, {
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      },
+      headersTimeout: PREFLIGHT_TIMEOUT_MS,
+      bodyTimeout: PREFLIGHT_TIMEOUT_MS,
+    });
+  } catch (err: any) {
+    throw new Error(`Could not reach the authorization URL (${origin}): ${describeNetworkError(err)}`);
+  }
+
+  const status = res.statusCode;
+  const text = await res.body.text().catch(() => "");
+
+  // An authorization server reports a bad request by redirecting back to the
+  // callback with ?error=..., which the browser would deliver to us anyway.
+  const location = res.headers.location;
+  if (status >= 300 && status < 400 && typeof location === "string" && location.startsWith(redirectUri)) {
+    const params = new URL(location).searchParams;
+    const error = params.get("error");
+    if (error) {
+      const description = params.get("error_description");
+      throw new Error(`Authorization server rejected the request: ${error}${description ? ` - ${description}` : ""}`);
+    }
+  }
+
+  if (status >= 400) {
+    try {
+      const body = JSON.parse(text);
+      if (body && typeof body.error === "string") {
+        const description = body.error_description || body.message;
+        throw new Error(`Authorization server rejected the request: ${body.error}${description ? ` - ${description}` : ""}`);
+      }
+    } catch (err: any) {
+      if (err instanceof Error && err.message.startsWith("Authorization server rejected")) throw err;
+      // Not JSON: fall through to the status checks below.
+    }
+    if (status === 404) throw new Error(`Authorization URL not found (404). Check the Auth URL: ${authorizeUrl.split("?")[0]}`);
+    if (status >= 500) throw new Error(`Authorization server error (${status}) at ${origin}. Try again later.`);
+  }
+}
+
 /**
  * Shutdown helper – close server + reject promise.
  */
@@ -321,13 +402,21 @@ export default function createOAuth2MainPlugin(ctx: ElectronExtensionContext): E
                 authUrlObj.searchParams.set("code_challenge_method", codeChallengeMethod || "S256");
               }
 
-              ctx.shell.openExternal(authUrlObj.toString()).catch((err: any) => {
-                shutdownServer();
-                reject(new Error(`OAuth2: failed to open browser window — ${err?.message || err}`));
-              });
+              preflightAuthUrl(authUrlObj.toString(), redirectUri)
+                .then(() => {
+                  // Cancelled, or replaced by a newer flow, while the check ran.
+                  if (activeServer !== server) return;
+                  return ctx.shell.openExternal(authUrlObj.toString()).catch((err: any) => {
+                    throw new Error(`OAuth2: failed to open browser window — ${err?.message || err}`);
+                  });
+                })
+                .catch((err: any) => {
+                  if (activeServer !== server) return;
+                  shutdownServer(err?.message || String(err));
+                });
 
               const timeout = setTimeout(() => {
-                shutdownServer("OAuth2 flow timed out (120s)");
+                if (activeServer === server) shutdownServer("OAuth2 flow timed out (120s)");
               }, 120_000);
 
               let handled = false;
@@ -508,13 +597,21 @@ export default function createOAuth2MainPlugin(ctx: ElectronExtensionContext): E
               if (scope) authUrlObj.searchParams.set("scope", scope);
               if (state) authUrlObj.searchParams.set("state", state);
 
-              ctx.shell.openExternal(authUrlObj.toString()).catch((err: any) => {
-                shutdownServer();
-                reject(new Error(`OAuth2: failed to open browser window — ${err?.message || err}`));
-              });
+              preflightAuthUrl(authUrlObj.toString(), redirectUri)
+                .then(() => {
+                  // Cancelled, or replaced by a newer flow, while the check ran.
+                  if (activeServer !== server) return;
+                  return ctx.shell.openExternal(authUrlObj.toString()).catch((err: any) => {
+                    throw new Error(`OAuth2: failed to open browser window — ${err?.message || err}`);
+                  });
+                })
+                .catch((err: any) => {
+                  if (activeServer !== server) return;
+                  shutdownServer(err?.message || String(err));
+                });
 
               const timeout = setTimeout(() => {
-                shutdownServer("OAuth2 implicit flow timed out (120s)");
+                if (activeServer === server) shutdownServer("OAuth2 implicit flow timed out (120s)");
               }, 120_000);
 
               server.on("request", (req, res) => {

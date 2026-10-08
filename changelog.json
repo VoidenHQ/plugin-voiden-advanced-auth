@@ -1,5 +1,23 @@
 [
   {
+    "version": "v2.0.10",
+    "date": "08/10/2026",
+    "title": "Faster OAuth Errors & Clearer OAuth Guidance for Agents",
+    "changes": {
+      "Improved": [
+        "OAuth 2.0 sign-in now checks the authorization URL first and shows an error straight away when the server is unreachable or rejects the request, instead of waiting 120 seconds.",
+        "The agent skill now explains how to tell which OAuth 2.0 grant a server offers, and when to use each one.",
+        "The agent skill now says when to use OAuth 1.0a, and which OAuth grants are not supported.",
+        "The agent skill now explains that all OAuth blocks in a file share one sign-in."
+      ],
+      "Fixed": [
+        "A cancelled or finished OAuth sign-in can no longer end a newer one when its timer runs out.",
+        "The agent skill no longer suggests placing the auth block inside the request block.",
+        "The agent skill now tells agents to use Voiden's own callback address, never a page on the API server."
+      ]
+    }
+  },
+  {
     "version": "v2.0.9",
     "date": "08/10/2026",
     "title": "Headless Auth Fix & OAuth Guidance for Agents",

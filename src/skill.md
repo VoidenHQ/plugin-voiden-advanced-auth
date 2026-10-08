@@ -1,6 +1,8 @@
 ## Extension: Voiden Advanced Auth
 
-Provides the `auth` block for all authentication types. Place it inside or alongside a `request` block.
+Provides the `auth` block for all authentication types. It is its own top-level ` ```void ` fence, placed after the `request` block of the same section. Never nest it inside the `request` block's `content`, which holds only `method` and `url`.
+
+> **Read this when:** the API needs authentication of any kind (login, token, API key, OAuth, session cookie). Read it before writing the first request; it decides which `auth` block applies, and when none does.
 
 > **Singleton per section — one `auth` block total, no matter the type.** `bearer`, `basic`, `apiKey`, `oauth1`, `oauth2`, `digest`, `awsSignature`, `ntlm`, `hawk`, `netrc`, `atlassianAsap`, and `inherit`/`none` all fill the *same* single `auth` slot in a section. Changing auth type means editing this one block's `authType` and fields in place — never insert a second `auth` block alongside the first.
 
@@ -29,6 +31,7 @@ This applies whenever you generate `.void` requests for an API, whatever the sou
 | `Authorization: Bearer <token>`, and the token comes from an OAuth 2.0 token endpoint (the API's own, or a provider's such as Google or Auth0) | `authType: oauth2` on each protected request |
 | `Authorization: Bearer <token>`, where the token is a static key or comes from a non-OAuth login endpoint | `authType: bearer`, with the token in an environment variable or captured from the login request as `{{process.token}}` |
 | An API key in a header or query parameter | `authType: apiKey` |
+| An OAuth 1.0a signature: the API issues a consumer key and secret, and each request carries an `Authorization: OAuth ...` header with `oauth_signature`, `oauth_nonce` and `oauth_timestamp` | `authType: oauth1` |
 | A **session cookie** set by the server after a browser login (including "Sign in with Google/GitHub" handled by the server) | No `auth` block. See "Cookie sessions" below |
 
 How to recognise each case in a codebase:
@@ -36,11 +39,29 @@ How to recognise each case in a codebase:
 - **The API is, or delegates to, an OAuth 2.0 server.** Look for a token endpoint that accepts `grant_type` and returns `access_token` (often `/oauth/token`), an authorization endpoint (`/oauth/authorize`), `/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`, an `oauth2` entry under an OpenAPI document's `securitySchemes`, or middleware that reads `Authorization: Bearer` and checks scopes. **Put an `oauth2` auth block on the protected requests.** Do not model the login as plain requests to `/oauth/authorize` and `/oauth/token`: the authorize endpoint is a browser page that a request cannot complete, and the block already performs both steps.
 - **Cookie sessions.** Look for the server redirecting to a provider, handling the callback itself with its own client secret, and then calling `Set-Cookie`; protected handlers read `req.cookies`/a session, never an `Authorization` header. Here the server is the OAuth client and the API never accepts a token, so an `oauth2` block would obtain a token the API ignores. Generate the login endpoints as plain requests with `follow_redirects` set to `false` in an `options-table` (assert the `302` and its `Location`; following the redirect lands on the provider's sign-in page, which rejects non-browser clients), and send the session cookie on protected requests with a `cookies-table` holding an environment variable. Say in the file that the cookie has to be copied from a signed-in browser.
 
-Pick the OAuth grant from what the server offers to a client like Voiden:
+**Which OAuth 2.0 grant to use.** First find out which grants the server offers. Look in these places, in this order:
 
-- `client_credentials` when a confidential client (id + secret) exists for machine access. Prefer it for test suites: it needs no browser.
-- `authorization_code` when requests must act as a signed-in user. Use a client the server registers for native/public use, and check its allowed redirect URIs (see "Callback URL" below).
-- `password` only if the server still supports it. `implicit` only if nothing else is offered.
+1. The server's metadata document (`/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`): its `grant_types_supported` list is the definitive answer.
+2. The token endpoint's code: the `grant_type` values it accepts.
+3. An OpenAPI document's `securitySchemes`: the keys under `flows` (`authorizationCode`, `clientCredentials`, `password`, `implicit`).
+4. The registered clients: which grants each is allowed, and whether it has a secret.
+
+Then choose among the grants on offer:
+
+| Grant | Create it when | How to recognise it |
+|---|---|---|
+| `client_credentials` | A client with an id and secret exists for machine access. **Prefer it for test suites**: it needs no browser | `grant_type=client_credentials` is accepted; a client is registered with a secret and no redirect URIs |
+| `authorization_code` | Requests must act as a signed-in user | An authorize endpoint that shows a sign-in or consent page; `response_type=code`; a client registered with redirect URIs. Use a client meant for native or public use, and check its redirect URIs (see "Callback URL" below) |
+| `password` | The server accepts a username and password at the token endpoint, and a user-level token is needed without a browser. Use it only when `authorization_code` is not offered; many servers have removed it | `grant_type=password` is accepted, with `username` and `password` form fields at the token endpoint |
+| `implicit` | It is the only user-level grant on offer. It is deprecated; never choose it when `authorization_code` is available | The authorize endpoint accepts `response_type=token` and returns the token in the redirect URL's fragment; there is no code exchange at the token endpoint |
+
+**Grants the `oauth2` block does not support.** Do not force one of the four grants above onto an API that needs a different one. Say so, and get the token another way:
+
+- **Device authorization** (`urn:ietf:params:oauth:grant-type:device_code`): the user enters a code on a second device. Not supported.
+- **JWT bearer / private-key assertion** (`urn:ietf:params:oauth:grant-type:jwt-bearer`, or `client_assertion` at the token endpoint): the client signs a JWT instead of sending a secret. Not supported by the `oauth2` block. If the API is Atlassian ASAP, use `authType: atlassianAsap`.
+- **Token exchange** and other extension grants: not supported.
+
+For these, request the token with an ordinary request when that is possible (see the token-request pattern under `oauth2` below), or have the user supply a token in an environment variable and use `authType: bearer`.
 
 ### Auth Types
 
@@ -114,7 +135,7 @@ In the app, an `oauth2` block obtains an access token (opening the system browse
 
 **authorization_code** — a user signs in through the system browser. PKCE (`S256`) is always sent; there is no setting for it, and a server that requires PKCE works as is. Leave `client_secret` out for a public client.
 
-*Callback URL.* Voiden receives the redirect on a local listener at the address in the `callback_url` row. **Always write this row, and use `http://localhost:9090/callback`** unless the user or the server calls for another address: it is what the app pre-fills when the block is added by hand, so agent-written and hand-made blocks stay the same. Without the row Voiden falls back to `http://127.0.0.1:<random port>/callback`, which any server requiring an exact registered redirect URI will reject. The same address has to be registered on the authorization server for the client being used, character for character (`localhost` and `127.0.0.1` are different addresses to a server). Check the server's allowed redirect URIs; if the address is not among them, tell the user what to register or which server setting adds it. A `.void` file cannot do that part.
+*Callback URL.* Voiden receives the redirect on a local listener at the address in the `callback_url` row. **Always write this row, and use `http://localhost:9090/callback`** unless the user or the server calls for another address: it is what the app pre-fills when the block is added by hand, so agent-written and hand-made blocks stay the same. Without the row Voiden falls back to `http://127.0.0.1:<random port>/callback`, which any server requiring an exact registered redirect URI will reject. The same address has to be registered on the authorization server for the client being used, character for character (`localhost` and `127.0.0.1` are different addresses to a server). The callback is where **Voiden** listens, so it must be a free local port of its own. Never set it to a URL on the API or authorization server (for example the server's own `/oauth/callback` page), even when that is the only redirect URI the server currently lists: Voiden cannot listen there, and the sign-in would never return to it. Check the server's allowed redirect URIs; if Voiden's address is not among them, keep `http://localhost:9090/callback` in the block and tell the user what to register or which server setting adds it. A `.void` file cannot do that part.
 
 ```yaml
 attrs:
@@ -202,6 +223,8 @@ content:
         row: [scope, "api"]
 ```
 
+*One sign-in for a whole file.* Every section that calls the same API carries its own `oauth2` block (sections are isolated), and all of them must use the same `variablePrefix` so they share one token. A block with no stored token starts its own sign-in when its request is sent, so running several sections before signing in opens several sign-in pages, and many servers only accept the latest one. Say at the top of the file: press **Get Token** on the first section and finish signing in before using Run All.
+
 **The `oauth2` block only runs in the Voiden app.** `voiden-runner` and the `voiden-mcp` tools apply `bearer`, `basic` and `apiKey` blocks headlessly, but skip `oauth2` (and `oauth1`, `digest`, `ntlm`, `awsSignature`): a request carrying one is sent with no credentials there. So:
 
 - Do not expect to verify an `oauth2` request with `run_request`; a `401` from a headless run does not mean the block is wrong. Tell the user to press **Get Token** in the app.
@@ -257,6 +280,8 @@ content:
 Later sections then use `authType: bearer` with `[token, "{{process.access_token}}"]`. When a project needs both, generate both: the token-request file for automated runs, and a file with the `oauth2` block for interactive use.
 
 #### oauth1 — OAuth 1.0a
+
+Use it when the API signs every request instead of sending a bearer token: it issues a consumer key and consumer secret (and usually an access token and token secret per user), and its documentation or code refers to `oauth_consumer_key`, `oauth_signature`, `oauth_nonce` or a signature method such as `HMAC-SHA1`. This is a different protocol from OAuth 2.0; an API that has a token endpoint returning `access_token` wants `oauth2`, not this. The block signs the request with the four values below. It does not run the three-step sign-in that issues the access token and token secret, so those must already exist. Like `oauth2`, it only runs in the app.
 
 ```yaml
 attrs:
