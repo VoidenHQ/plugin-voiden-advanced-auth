@@ -1,5 +1,21 @@
 [
   {
+    "version": "v2.0.9",
+    "date": "08/10/2026",
+    "title": "Headless Auth Fix & OAuth Guidance for Agents",
+    "changes": {
+      "Fixed": [
+        "Bearer, Basic, and API key auth now send their credentials when run headlessly (voiden-runner, voiden-mcp), instead of empty values.",
+        "Basic auth now resolves {{VARIABLES}} in the username and password when run headlessly.",
+        "The agent skill's OAuth 2.0 examples now use valid client authentication values."
+      ],
+      "Improved": [
+        "The agent skill now explains when to use an OAuth 2.0 block and when not to, such as cookie-based logins.",
+        "The agent skill now documents OAuth 2.0 callback URLs, automatic PKCE, token variables, and a token-request pattern for headless runs."
+      ]
+    }
+  },
+  {
     "version": "v2.0.8",
     "date": "24/08/2026",
     "title": "Docs: Skill Now Documents the Single Auth Slot Rule",
