@@ -114,7 +114,7 @@ In the app, an `oauth2` block obtains an access token (opening the system browse
 
 **authorization_code** — a user signs in through the system browser. PKCE (`S256`) is always sent; there is no setting for it, and a server that requires PKCE works as is. Leave `client_secret` out for a public client.
 
-*Callback URL.* Voiden receives the redirect on a local listener. With no `callback_url` row it uses `http://127.0.0.1:<random port>/callback`, which a server that requires an exact registered redirect URI will reject. For such a server set `callback_url` to a fixed address, for example `http://127.0.0.1:53682/callback`, and register that exact address on the authorization server for the client being used. If the server cannot be changed, this grant cannot be used with it.
+*Callback URL.* Voiden receives the redirect on a local listener at the address in the `callback_url` row. **Always write this row, and use `http://localhost:9090/callback`** unless the user or the server calls for another address: it is what the app pre-fills when the block is added by hand, so agent-written and hand-made blocks stay the same. Without the row Voiden falls back to `http://127.0.0.1:<random port>/callback`, which any server requiring an exact registered redirect URI will reject. The same address has to be registered on the authorization server for the client being used, character for character (`localhost` and `127.0.0.1` are different addresses to a server). Check the server's allowed redirect URIs; if the address is not among them, tell the user what to register or which server setting adds it. A `.void` file cannot do that part.
 
 ```yaml
 attrs:
@@ -134,7 +134,7 @@ content:
       - attrs: { disabled: false }
         row: [scope, "read write"]
       - attrs: { disabled: false }
-        row: [callback_url, "{{OAUTH_CALLBACK_URL}}"]
+        row: [callback_url, "http://localhost:9090/callback"]
       - attrs: { disabled: false }
         row: [state, "{{OAUTH_STATE}}"]
 ```
@@ -155,7 +155,7 @@ content:
       - attrs: { disabled: false }
         row: [scope, "read"]
       - attrs: { disabled: false }
-        row: [callback_url, "{{OAUTH_CALLBACK_URL}}"]
+        row: [callback_url, "http://localhost:9090/callback"]
       - attrs: { disabled: false }
         row: [state, "{{OAUTH_STATE}}"]
 ```
